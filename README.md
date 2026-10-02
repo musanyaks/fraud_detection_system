@@ -171,6 +171,70 @@ live transactions, risk scores, alerts, and geo-distributed fraud.
 Cold start after a reboot: `./scripts/start-all.sh` (readiness-gated startup of
 the full stack), then `npm run dev`.
 
+## Streaming Lifecycle
+
+The consumer reads Kafka with `auto_offset_reset="latest"`: a fresh consumer group
+starts at the topic **head** (live messages only). Two operational rules keep the
+dashboards fed from today's bucket:
+
+1. **Consumer and producer must be up together.** Messages emitted while the
+   consumer is down queue in the topic; the group drains them oldest-first,
+   so dashboards lag until the backlog clears.
+2. **Producer rate must stay below consumer capacity** (~5 txns/s scoring
+   budget). The demo producer runs at 3/s.
+
+### Start streaming (normal path)
+
+```bash
+./scripts/start-all.sh         # readiness-gated startup of the full stack
+docker compose up -d producer  # if not already running
+```
+
+### Verify the stream is live
+
+```bash
+# scored counter - must climb
+curl -sS http://localhost:9100/metrics | grep fraud_transactions_processed_total
+
+# today's Cassandra bucket - must climb at the producer rate
+docker compose exec -T cassandra cqlsh -e \
+  "SELECT count(*) FROM fraud_detection.transactions_by_time WHERE day='$(date +%Y-%m-%d)'"
+
+# consumer-group lag - small and stable means real-time
+docker compose exec kafka kafka-consumer-groups \
+  --bootstrap-server kafka:29092 --group fraud-detector-v3 --describe
+```
+
+### Resume streaming after downtime / clear a backlog
+
+If the dashboard shows old data, the consumer group is still positioned in a
+backlog. `stream-recovery.sh` stops the consumer, resets its offsets to the
+topic head (skipping queued messages - they are stale demo data), restarts
+it, and verifies today's bucket fills:
+
+```bash
+./scripts/stream-recovery.sh
+```
+
+The script performs, in order:
+
+- **A** - print the consumer group compiled into the running image
+- **B** - list every consumer group and its lag BEFORE
+- **C** - confirm the producer is streaming
+- **D** - STOP the consumer (offset reset requires an inactive group)
+- **E** - RESET the `fraud-detector-v3` offsets to latest
+- **F** - verify the reset: `CURRENT-OFFSET` must equal the log end offset
+- **G** - START the consumer again (reads live messages only)
+- **H** - verify twice, 30 s apart: scored counter AND today's bucket climb
+
+Source: [scripts/stream-recovery.sh](scripts/stream-recovery.sh)
+
+Why the two clocks matter: `transactions_by_time` is bucketed by each message's
+**emission timestamp**, while `fraud_predictions_by_time` is bucketed by
+**processing time**. During a backlog drain, predictions land in today's
+partition while transactions land in the backlog's day - the reset above is
+what brings them back into sync.
+
 ## Configuration
 
 | Variable | Default | Purpose |
