@@ -1,0 +1,15 @@
+.git
+.gitignore
+.gitattributes
+venv/
+.venv/
+mlflow-venv/
+mlflow/
+models/artifacts/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+*.log
+.env
+.github/
+tests/

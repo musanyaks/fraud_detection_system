@@ -1,0 +1,37 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- Virtual environments ----
+venv/
+.venv/
+mlflow-venv/
+
+# ---- Secrets / local config ----
+.env
+.env.*
+!.env.example
+
+# ---- Large local data & build artifacts ----
+wheels/
+models/artifacts/
+*.joblib
+*.log
+mlflow/
+*.db
+
+# ---- Docker ----
+docker-compose.override.yml
+
+# ---- IDE / OS ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
